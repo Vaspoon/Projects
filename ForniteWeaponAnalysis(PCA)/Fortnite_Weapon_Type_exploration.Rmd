@@ -1,0 +1,187 @@
+---
+title: "Fortnite_Weapons_Type_Analysis"
+author: "vaspilk"
+date: "2023-09-16"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+#Import needed packages
+
+```{r, echo=FALSE}
+require(dplyr)
+require(ggplot2)
+require(viridis)
+require(ggcorrplot)
+require(FactoMineR)
+```
+
+#Preparing Data \## Import Dataset and Cleaning it
+
+```{r}
+weapons <- read.csv("data/Fortnite_BR_Weapon_Attributes.csv",sep=";")
+weapons$Name <- as.factor(weapons$Name)
+weapons$Rarity <- as.factor(weapons$Rarity)
+weapons$Type <- as.factor(weapons$Type)
+```
+
+## Dataset overview
+
+```{r}
+summary(weapons)
+```
+
+Critical..
+and Crit..Damage are corrupted columns, its values are always equal to 0.
+Durability is also a corrupted column as its value is always "?".
+We'll be removing these columns for the following analysis.
+
+```{r}
+weapons <- select(weapons, -c("Critical..","Crit..Damage","Durability"))
+```
+
+```{r}
+cat("Distinct Weapons :",length(levels(weapons$Name)),"\n",
+"Distinct Rarity Levels :",length(levels(weapons$Rarity)),"\n",
+"Distinct Weapon Types :",length(levels(weapons$Type)))
+```
+
+This dataset contains 16 different weapons overall.
+Weapons are from 6 different Types, and 5 disitinct levels of Rarity are are presented.
+
+# Exploring Weapons Types & Rarity
+
+## Barchart per Type
+
+```{r}
+weapons_type_barchart <- ggplot(data = weapons,aes(x=Type,fill = Rarity)) + geom_bar(stats="identity",alpha = 0.8,color="black") +theme_minimal() +theme(axis.text.x = element_text(angle=90))+ xlab("Weapon Type") +
+  ylab("Number of Weapons")
+
+weapons_type_barchart <- weapons_type_barchart + scale_fill_manual(values=c('#B2B2B2','#DE1FF6','#FFA500','#11BFE1','#7EC091')) #Colors usually used in video games for rarity levels
+
+weapons_type_barchart
+```
+
+## Damages per Weapon Type
+
+Looking at DPS repartition among different weapon types.
+
+```{r}
+dps_type_violin <- ggplot(weapons, aes(x = Type, y = DPS))+   geom_violin(aes(fill = Type), trim = FALSE) +geom_boxplot(width = 0.1)+ theme_minimal() +theme(axis.text.x = element_text(angle=90))+ xlab("Weapon Type") + ylab("DPS")
+
+dps_type_violin <- dps_type_violin + scale_fill_manual(values=c('#B78181','#7583b0','#FFA500','#a1bb93','#b589a3','#b0a275')) # Palette color manually scaled for Weapon Types
+
+dps_type_violin
+```
+
+It seems like Pistols is the weapon type with the wider range of DPS.
+Weapon types with the most different DPS distributions are Sniper Riffles and Submachine Guns.
+
+## Barchart per Rarity
+
+```{r}
+
+weapons_rarity_barchart <- ggplot(data = weapons,aes(x=Rarity,fill = Type )) + geom_bar(alpha = 0.8,color="black") +theme_minimal() +theme(axis.text.x = element_text(angle=90)) + xlab("Rarity Category") + ylab("Number of Weapons")
+
+weapons_rarity_barchart <- weapons_rarity_barchart + scale_fill_manual(values=c('#B78181','#7583b0','#FFA500','#a1bb93','#b589a3','#b0a275'))
+
+weapons_rarity_barchart
+```
+
+## Damages per Rarity
+
+```{r}
+dps_rarity_violin <- ggplot(weapons, aes(x = Rarity , y = DPS))+  geom_violin(aes(fill = Rarity), trim = FALSE)+ geom_boxplot(width = 0.1) +theme_minimal() +theme(axis.text.x = element_text(angle=90)) + xlab("Weapon Type") + ylab("DPS")
+
+dps_rarity_violin <- dps_rarity_violin + scale_fill_manual(values=c('#B2B2B2','#DE1FF6','#FFA500','#11BFE1','#7EC091')) # Palette color manually scaled for Weapon 
+
+dps_rarity_violin
+
+```
+
+It seems more difficult to differentiate Rarity Levels of weapons studying the distributions of DPS among weapons.
+
+# Characterizing Weapons with PCA
+
+## Correlations Matrix
+
+First we'll temporarely keep only numeric variables
+
+```{r}
+temp.weapons <- select(weapons, -c(1,10,11))
+corr <- round(cor(temp.weapons), 1)
+ggcorrplot(corr, method = "circle" , type = "lower")
+```
+
+## PCA
+
+### Applying PCA
+
+```{r}
+
+weapons_PCA <- select(weapons,-c(1))
+
+res.PCA <- PCA(X = weapons_PCA,quali.sup = c(9,10),graph = F)
+
+cat("First Dimension explains",res.PCA$eig[1,2],"% of the dataset's Variance","\n","Second Dimension explains",res.PCA$eig[2,2],"% of the dataset's Variance","\n\n","Meaning",res.PCA$eig[1,2]+res.PCA$eig[2,2],"% is explained in the first two dimensions")
+```
+
+### Studying Dimensions
+
+```{r}
+dimdesc(res.PCA,axes = c(1,2))
+```
+
+-   Dimension 1
+
+Is positively correlated to Mag..Size, Fire.Rate and DPS.
+Is negatively correlated to Impact and Damage
+
+-   Dimension 2
+
+Is positively correlated to Reload.Time and Range
+
+Both dimensions describe most part of information we found with the correlation Matrix.
+
+### Variables
+
+```{r}
+plot.PCA(res.PCA, axes=c(1, 2), choix="var", habillage="cos2")
+```
+
+Following the dimensions' description, the graph of variables offers a better representation of variables' correlations with dimensions.
+
+Moreover,by observing the cos² of each variables, we notice that the Ammo.Cost variable is not properly projected on the factorial plan.
+Therefore we will not make any conclusion regarding this variable.
+
+Also, it is reassuring that the 1st Dimension presents opposite correlations for Fire.Rate and Damage variables, as this is a well known trade-off in game design for weapons.
+
+### Individuals
+
+We're now going to analyze weapons Rarity Levels and Types representations in the factorial plan.
+
+```{r}
+plotellipses(res.PCA)
+```
+
+-   Weapon Rarity Levels
+
+As confidence ellipses of each Rarity level overlaps with each of them, it is not possible to differentiate weapons of each category on the factorial plan.
+
+This is in fact a great thing as it means each Rarity level doesn't differentiate from another in a significant way regarding for example Damages,DPS and Impact which could possibly impact the balance between weapons.
+
+-   Weapon Types
+
+The first thing we can notice is that the 2nd Dimension differentiates Shotguns from all other weapon types, while the 1st Dimension presents a more homogeneous distribution of weapon types.
+Here is some conclusions we can find for all weapon types :
+
+-   Shotguns are mostly defined by higher hit Range and Reload Time values than other types, but also by high values of Damage and Impact.
+
+-   Shotguns are mostly defined by higher hit Range and Reload Time values than other types.
+
+-   Submachine Guns and Assault Rifles are defined by higher DPS,Fire Rate and MagSize, and lower values in Impact and Damage.
+
+-   Sniper Riffles and Explosives are defined by higher values in Damages and Imapct, and lower values in DPS, Fire Rate and MagSize.
+
+
